@@ -38,7 +38,7 @@ def make_predictions_from_excel(model_path, file):
 st.title("📊 Excel Prediction App")
 
 # File uploader
-uploaded_file = st.file_uploader("Upload an Excel file", type=["xlsx", "xls"])
+uploaded_file = st.file_uploader("Upload an CSV file", type=["csv"])
 
 # Model path input
 model_path = st.text_input("Enter path to your saved model (.joblib)", "model.joblib")
