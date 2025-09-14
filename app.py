@@ -13,7 +13,7 @@ def make_predictions_from_excel(model_path, file):
 
     try:
         # Read uploaded Excel file into a DataFrame
-        new_data_df = pd.read_excel(file)
+        new_data_df = pd.read_csv(file)
         st.success(f"✅ New data loaded successfully.")
     except Exception as e:
         st.error(f"❌ Error while loading Excel file: {e}")
