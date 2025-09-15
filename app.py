@@ -1,62 +1,64 @@
 import streamlit as st
 import pandas as pd
 import joblib
+import io
 
-# Your prediction function
-def make_predictions_from_excel(model_path, file):
+# Prediction function
+def make_predictions_from_file(model_file, data_file):
     try:
-        # Load the saved model
-        model = joblib.load(model_path)
-    except FileNotFoundError:
-        st.error(f"❌ Error: The model file at {model_path} was not found.")
-        return None
-
-    try:
-        # Read uploaded Excel file into a DataFrame
-        new_data_df = pd.read_csv(file)
-        st.success(f"✅ New data loaded successfully.")
+        # Load saved model
+        # model_file is an UploadedFile, so use .read() and io.BytesIO
+        model = joblib.load(model_file)
     except Exception as e:
-        st.error(f"❌ Error while loading Excel file: {e}")
+        st.error(f"❌ Error loading model: {e}")
         return None
 
-    # Make predictions
-    predictions = model.predict(new_data_df)
-    st.success("✅ Predictions completed.")
+    try:
+        # Load new data
+        if data_file.name.endswith(".csv"):
+            new_data_df = pd.read_csv(data_file)
+        else:
+            new_data_df = pd.read_excel(data_file)
+        st.success("✅ New data loaded successfully.")
+    except Exception as e:
+        st.error(f"❌ Error while loading new data file: {e}")
+        return None
 
-    # Put predictions into DataFrame
-    predictions_df = pd.DataFrame(predictions, columns=['Predicted Target'])
+    try:
+        # Make predictions
+        predictions = model.predict(new_data_df)
+        st.success("✅ Predictions completed.")
+    except Exception as e:
+        st.error(f"❌ Error during prediction: {e}")
+        return None
 
-    # Convert class indices back to labels (if classification)
-    if hasattr(model.named_steps['model'], 'classes_'):
-        class_mapping = {i: label for i, label in enumerate(model.named_steps['model'].classes_)}
-        predictions_df['Predicted Target'] = predictions_df['Predicted Target'].map(class_mapping)
+    # Wrap in DataFrame
+    predictions_df = pd.DataFrame(predictions, columns=["Predicted Target"])
+
+    # If classification, map class labels
+    if hasattr(model.named_steps, "model") and hasattr(model.named_steps["model"], "classes_"):
+        class_mapping = {i: label for i, label in enumerate(model.named_steps["model"].classes_)}
+        predictions_df["Predicted Target"] = predictions_df["Predicted Target"].map(class_mapping)
 
     return predictions_df
 
+# ===== Streamlit UI =====
+st.title("📊 Prediction App: Upload Model + Data")
 
-# -------- Streamlit UI --------
-st.title("📊 Excel Prediction App")
+data_file = st.file_uploader("Upload data file (CSV or Excel)", type=["csv", "xlsx", "xls"])
+model_file = st.file_uploader("Upload model file (.joblib)", type=["joblib"])
 
-# File uploader
-uploaded_file = st.file_uploader("Upload an CSV file", type=["csv"])
-
-# Model path input
-model_path = st.text_input("Enter path to your saved model (.joblib)", "model.joblib")
-
-if uploaded_file is not None and model_path:
+if data_file is not None and model_file is not None:
     if st.button("Run Predictions"):
-        predictions_df = make_predictions_from_excel(model_path, uploaded_file)
-
-        if predictions_df is not None:
+        preds_df = make_predictions_from_file(model_file, data_file)
+        if preds_df is not None:
             st.subheader("Prediction Results")
-            st.dataframe(predictions_df)
+            st.dataframe(preds_df)
 
-            # Option to download predictions
-            csv = predictions_df.to_csv(index=False).encode("utf-8")
+            csv = preds_df.to_csv(index=False).encode("utf-8")
             st.download_button(
                 "📥 Download Predictions as CSV",
                 csv,
                 "predictions.csv",
-                "text/csv",
-                key="download-csv"
+                "text/csv"
             )
