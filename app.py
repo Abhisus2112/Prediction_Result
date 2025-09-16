@@ -1,64 +1,58 @@
 import streamlit as st
-import pandas as pd
-import joblib
-import io
+import os
+import json
+from train_and_save_model import train_and_save_model
 
-# Prediction function
-def make_predictions_from_file(model_file, data_file):
-    try:
-        # Load saved model
-        # model_file is an UploadedFile, so use .read() and io.BytesIO
-        model = joblib.load(model_file)
-    except Exception as e:
-        st.error(f"❌ Error loading model: {e}")
-        return None
+st.set_page_config(page_title="AutoML Model Trainer", layout="wide")
 
-    try:
-        # Load new data
-        if data_file.name.endswith(".csv"):
-            new_data_df = pd.read_csv(data_file)
-        else:
-            new_data_df = pd.read_excel(data_file)
-        st.success("✅ New data loaded successfully.")
-    except Exception as e:
-        st.error(f"❌ Error while loading new data file: {e}")
-        return None
+st.title("🤖 AutoML Model Trainer")
+st.write("Upload a CSV file and let the app detect problem type, train multiple models, and save the best one.")
 
-    try:
-        # Make predictions
-        predictions = model.predict(new_data_df)
-        st.success("✅ Predictions completed.")
-    except Exception as e:
-        st.error(f"❌ Error during prediction: {e}")
-        return None
+# --- File Upload ---
+uploaded_file = st.file_uploader("Upload your dataset (CSV)", type=["csv"])
 
-    # Wrap in DataFrame
-    predictions_df = pd.DataFrame(predictions, columns=["Predicted Target"])
+if uploaded_file is not None:
+    # Save the uploaded file to a temporary local path
+    file_path = f"temp_{uploaded_file.name}"
+    with open(file_path, "wb") as f:
+        f.write(uploaded_file.getbuffer())
 
-    # If classification, map class labels
-    if hasattr(model.named_steps, "model") and hasattr(model.named_steps["model"], "classes_"):
-        class_mapping = {i: label for i, label in enumerate(model.named_steps["model"].classes_)}
-        predictions_df["Predicted Target"] = predictions_df["Predicted Target"].map(class_mapping)
+    model_name = st.text_input("Enter Model Name", value="MyCustomModel")
 
-    return predictions_df
+    if st.button("🚀 Train Models"):
+        # When starting a new training, clear any results from a previous run
+        if 'training_complete' in st.session_state:
+            del st.session_state['training_complete']
+            # ... and other related keys
 
-# ===== Streamlit UI =====
-st.title("📊 Prediction App: Upload Model + Data")
+        with st.spinner("Training models... Please wait."):
+            # This function will now save its results to st.session_state
+            train_and_save_model(file_path, model_name)
 
-data_file = st.file_uploader("Upload data file (CSV or Excel)", type=["csv", "xlsx", "xls"])
-model_file = st.file_uploader("Upload model file (.joblib)", type=["joblib"])
+        # After training, the script will automatically rerun, and the section below will activate.
 
-if data_file is not None and model_file is not None:
-    if st.button("Run Predictions"):
-        preds_df = make_predictions_from_file(model_file, data_file)
-        if preds_df is not None:
-            st.subheader("Prediction Results")
-            st.dataframe(preds_df)
+# --- ✨ NEW: Display download buttons if results are in memory ✨ ---
+# This code runs on EVERY page refresh.
+if st.session_state.get('training_complete', False):
+    st.success("🏆 Training Complete! Your files are ready for download.")
 
-            csv = preds_df.to_csv(index=False).encode("utf-8")
-            st.download_button(
-                "📥 Download Predictions as CSV",
-                csv,
-                "predictions.csv",
-                "text/csv"
-            )
+    st.subheader("📑 Model Metadata")
+    # Load metadata from session state to display it
+    st.json(json.loads(st.session_state['json_string']))
+
+    st.subheader("⬇️ Download Your Files")
+    col1, col2 = st.columns(2)
+    with col1:
+        st.download_button(
+            label="Download Trained Model (.joblib)",
+            data=st.session_state['model_bytes'],
+            file_name=st.session_state['model_filename'],
+            mime="application/octet-stream"
+        )
+    with col2:
+        st.download_button(
+            label="Download Metadata (.json)",
+            data=st.session_state['json_string'],
+            file_name=st.session_state['json_filename'],
+            mime="application/json"
+        )
